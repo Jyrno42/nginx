@@ -325,14 +325,16 @@ ngx_http_init_connection(ngx_connection_t *c)
 #if (NGX_HTTP_SSL)
     {
     ngx_http_ssl_srv_conf_t  *sscf;
+    ngx_http_ssl_loc_conf_t  *slcf;
 
     sscf = ngx_http_get_module_srv_conf(hc->conf_ctx, ngx_http_ssl_module);
 
     if (sscf->enable || hc->addr_conf->ssl) {
+        slcf = ngx_http_get_module_loc_conf(hc->conf_ctx, ngx_http_ssl_module);
 
         c->log->action = "SSL handshaking";
 
-        if (hc->addr_conf->ssl && sscf->ssl.ctx == NULL) {
+        if (hc->addr_conf->ssl && slcf->ssl.ctx == NULL) {
             ngx_log_error(NGX_LOG_ERR, c->log, 0,
                           "no \"ssl_certificate\" is defined "
                           "in server listening on SSL port");
@@ -627,7 +629,7 @@ ngx_http_ssl_handshake(ngx_event_t *rev)
     ngx_int_t                 rc;
     ngx_connection_t         *c;
     ngx_http_connection_t    *hc;
-    ngx_http_ssl_srv_conf_t  *sscf;
+    ngx_http_ssl_loc_conf_t  *slcf;
 
     c = rev->data;
     hc = c->data;
@@ -709,10 +711,9 @@ ngx_http_ssl_handshake(ngx_event_t *rev)
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, rev->log, 0,
                            "https ssl handshake: 0x%02Xd", buf[0]);
 
-            sscf = ngx_http_get_module_srv_conf(hc->conf_ctx,
-                                                ngx_http_ssl_module);
+            slcf = ngx_http_get_module_loc_conf(hc->conf_ctx, ngx_http_ssl_module);
 
-            if (ngx_ssl_create_connection(&sscf->ssl, c, NGX_SSL_BUFFER)
+            if (ngx_ssl_create_connection(&slcf->ssl, c, NGX_SSL_BUFFER)
                 != NGX_OK)
             {
                 ngx_http_close_connection(c);
@@ -830,6 +831,7 @@ ngx_http_ssl_servername(ngx_ssl_conn_t *ssl_conn, int *ad, void *arg)
     ngx_connection_t          *c;
     ngx_http_connection_t     *hc;
     ngx_http_ssl_srv_conf_t   *sscf;
+    ngx_http_ssl_loc_conf_t   *slcf;
     ngx_http_core_loc_conf_t  *clcf;
     ngx_http_core_srv_conf_t  *cscf;
 
@@ -883,29 +885,30 @@ ngx_http_ssl_servername(ngx_ssl_conn_t *ssl_conn, int *ad, void *arg)
     ngx_set_connection_log(c, clcf->error_log);
 
     sscf = ngx_http_get_module_srv_conf(hc->conf_ctx, ngx_http_ssl_module);
+    slcf = ngx_http_get_module_loc_conf(hc->conf_ctx, ngx_http_ssl_module);
 
     c->ssl->buffer_size = sscf->buffer_size;
 
-    if (sscf->ssl.ctx) {
-        SSL_set_SSL_CTX(ssl_conn, sscf->ssl.ctx);
+    if (slcf->ssl.ctx) {
+        SSL_set_SSL_CTX(ssl_conn, slcf->ssl.ctx);
 
         /*
          * SSL_set_SSL_CTX() only changes certs as of 1.0.0d
          * adjust other things we care about
          */
 
-        SSL_set_verify(ssl_conn, SSL_CTX_get_verify_mode(sscf->ssl.ctx),
-                       SSL_CTX_get_verify_callback(sscf->ssl.ctx));
+        SSL_set_verify(ssl_conn, SSL_CTX_get_verify_mode(slcf->ssl.ctx),
+                       SSL_CTX_get_verify_callback(slcf->ssl.ctx));
 
-        SSL_set_verify_depth(ssl_conn, SSL_CTX_get_verify_depth(sscf->ssl.ctx));
+        SSL_set_verify_depth(ssl_conn, SSL_CTX_get_verify_depth(slcf->ssl.ctx));
 
 #ifdef SSL_CTRL_CLEAR_OPTIONS
         /* only in 0.9.8m+ */
         SSL_clear_options(ssl_conn, SSL_get_options(ssl_conn) &
-                                    ~SSL_CTX_get_options(sscf->ssl.ctx));
+                                    ~SSL_CTX_get_options(slcf->ssl.ctx));
 #endif
 
-        SSL_set_options(ssl_conn, SSL_CTX_get_options(sscf->ssl.ctx));
+        SSL_set_options(ssl_conn, SSL_CTX_get_options(slcf->ssl.ctx));
     }
 
     return SSL_TLSEXT_ERR_OK;
@@ -1844,60 +1847,6 @@ ngx_http_process_request(ngx_http_request_t *r)
 
     c = r->connection;
 
-#if (NGX_HTTP_SSL)
-
-    if (r->http_connection->ssl) {
-        long                      rc;
-        X509                     *cert;
-        ngx_http_ssl_srv_conf_t  *sscf;
-
-        if (c->ssl == NULL) {
-            ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                          "client sent plain HTTP request to HTTPS port");
-            ngx_http_finalize_request(r, NGX_HTTP_TO_HTTPS);
-            return;
-        }
-
-        sscf = ngx_http_get_module_srv_conf(r, ngx_http_ssl_module);
-
-        if (sscf->verify) {
-            rc = SSL_get_verify_result(c->ssl->connection);
-
-            if (rc != X509_V_OK
-                && (sscf->verify != 3 || !ngx_ssl_verify_error_optional(rc)))
-            {
-                ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                              "client SSL certificate verify error: (%l:%s)",
-                              rc, X509_verify_cert_error_string(rc));
-
-                ngx_ssl_remove_cached_session(sscf->ssl.ctx,
-                                       (SSL_get0_session(c->ssl->connection)));
-
-                ngx_http_finalize_request(r, NGX_HTTPS_CERT_ERROR);
-                return;
-            }
-
-            if (sscf->verify == 1) {
-                cert = SSL_get_peer_certificate(c->ssl->connection);
-
-                if (cert == NULL) {
-                    ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                                  "client sent no required SSL certificate");
-
-                    ngx_ssl_remove_cached_session(sscf->ssl.ctx,
-                                       (SSL_get0_session(c->ssl->connection)));
-
-                    ngx_http_finalize_request(r, NGX_HTTPS_NO_CERT);
-                    return;
-                }
-
-                X509_free(cert);
-            }
-        }
-    }
-
-#endif
-
     if (c->read->timer_set) {
         ngx_del_timer(c->read);
     }
@@ -2058,16 +2007,16 @@ ngx_http_set_virtual_server(ngx_http_request_t *r, ngx_str_t *host)
 #if (NGX_HTTP_SSL && defined SSL_CTRL_SET_TLSEXT_HOSTNAME)
 
     if (hc->ssl_servername) {
-        ngx_http_ssl_srv_conf_t  *sscf;
+        ngx_http_ssl_loc_conf_t  *slcf;
 
         if (rc == NGX_DECLINED) {
             cscf = hc->addr_conf->default_server;
             rc = NGX_OK;
         }
 
-        sscf = ngx_http_get_module_srv_conf(cscf->ctx, ngx_http_ssl_module);
+        slcf = ngx_http_get_module_loc_conf(cscf->ctx, ngx_http_ssl_module);
 
-        if (sscf->verify) {
+        if (slcf->verify) {
             ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                           "client attempted to request the server name "
                           "different from the one that was negotiated");

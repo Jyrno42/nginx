@@ -17,13 +17,10 @@
 typedef struct {
     ngx_flag_t                      enable;
 
-    ngx_ssl_t                       ssl;
-
     ngx_flag_t                      prefer_server_ciphers;
 
     ngx_uint_t                      protocols;
 
-    ngx_uint_t                      verify;
     ngx_uint_t                      verify_depth;
 
     size_t                          buffer_size;
@@ -58,6 +55,12 @@ typedef struct {
     u_char                         *file;
     ngx_uint_t                      line;
 } ngx_http_ssl_srv_conf_t;
+
+typedef struct {
+    ngx_ssl_t                       ssl;
+
+    ngx_uint_t                      verify;
+} ngx_http_ssl_loc_conf_t;
 
 
 extern ngx_module_t  ngx_http_ssl_module;
