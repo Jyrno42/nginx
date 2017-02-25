@@ -881,8 +881,6 @@ static void *ngx_http_ssl_create_loc_conf(ngx_conf_t *cf) {
 
     slcf->verify = NGX_CONF_UNSET_UINT;
 
-    ngx_log_error(NGX_LOG_ERR, cf->log, 0, "set loc default %d", slcf->verify);
-
     return slcf;
 }
 
@@ -903,8 +901,6 @@ static char *ngx_http_ssl_merge_loc_conf(ngx_conf_t *cf, void *parent, void *chi
     }
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-
-    ngx_log_error(NGX_LOG_ERR, cf->log, 0, "SSL_CTRL_SET_TLSEXT_HOSTNAME");
 
     if (SSL_CTX_set_tlsext_servername_callback(conf->ssl.ctx,
                                                ngx_http_ssl_servername)

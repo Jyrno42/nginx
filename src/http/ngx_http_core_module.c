@@ -968,13 +968,33 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
                 return NGX_OK;
             }
 
+            // if reneg is still pending update connection flag and run this method again
+            // TODO: This hammers the cpu a lot... Figure out how to avoid it
+            if (c->ssl->wait_renegotiate) {
+                if (SSL_renegotiate_pending(c->ssl->connection) == 1) {
+                    if ((rc = SSL_peek(c->ssl->connection, peekbuf, 0)) < 0) {
+                        int n = SSL_get_error(c->ssl->connection, rc);
+
+                        if (n == SSL_ERROR_WANT_READ) {
+                            return NGX_AGAIN;
+                        } else {
+                            ngx_log_error(NGX_LOG_INFO, c->log, 0, "Re-negotiation peek error: (%l)", n);
+                            ngx_http_finalize_request(r, NGX_HTTPS_RENEGOTIATE_ERROR);
+                            return NGX_OK;
+                        }
+                    }
+                }
+
+                c->ssl->wait_renegotiate = 0;
+            }
+
             slcf = ngx_http_get_module_loc_conf(r, ngx_http_ssl_module);
 
             ngx_uint_t verify = slcf->verify;
 
             // Connection verify mode is not equal to ctx verify mode
             if (SSL_get_verify_mode(c->ssl->connection) != SSL_CTX_get_verify_mode(slcf->ssl.ctx)) {
-                ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "Connection verify mode does not equal to ctx verify mode");
+                ngx_log_error(NGX_LOG_INFO, c->log, 0, "Connection verify mode does not equal to ctx verify mode");
 
                 if (!SSL_get_secure_renegotiation_support(c->ssl->connection)) {
                     ngx_log_error(NGX_LOG_INFO, c->log, 0, "Client does not support secure renegotiation");
@@ -982,32 +1002,23 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
                     return NGX_OK;
                 }
 
-                // TODO: Some of the following (1, 3, 4) need to be enabled to gain
-                //        full renegotiation support.
-
                 // 1. update connection context
-                // SSL_set_SSL_CTX(c->ssl->connection, slcf->ssl.ctx);
+                SSL_set_SSL_CTX(c->ssl->connection, slcf->ssl.ctx);
 
                 // 2. update verify mode of the connection
                 SSL_set_verify(c->ssl->connection, SSL_CTX_get_verify_mode(slcf->ssl.ctx), SSL_CTX_get_verify_callback(slcf->ssl.ctx));
                 SSL_set_verify_depth(c->ssl->connection, SSL_CTX_get_verify_depth(slcf->ssl.ctx));
 
                 // 3. set ca lists
-                //
-                // Warning: Causes a segfault since something tries to free the memory space containing those ca lists...
-                // How: Just hit refresh a couple of times
-                //
-                // STACK_OF(X509_NAME)  *list = SSL_CTX_get_client_CA_list(slcf->ssl.ctx);
-                // SSL_set_client_CA_list(c->ssl->connection, list);
+                STACK_OF(X509_NAME)  *list = SSL_CTX_get_client_CA_list(slcf->ssl.ctx);
+                SSL_set_client_CA_list(c->ssl->connection, list);
 
                 // 4. update other options
-                // update other options
-                // SSL_set_options(c->ssl->connection, SSL_CTX_get_options(slcf->ssl.ctx));
+                SSL_set_options(c->ssl->connection, SSL_CTX_get_options(slcf->ssl.ctx));
 
                 // This part of the code is based on apaches implementation
-
                 rc = SSL_renegotiate(c->ssl->connection);
-                if (rc != 0) {
+                if (rc != 1) {
                     ngx_log_error(NGX_LOG_INFO, c->log, 0, "SSL_renegotiate error: (%l)", rc);
                     ngx_http_finalize_request(r, NGX_HTTPS_RENEGOTIATE_ERROR);
                     return NGX_OK;
@@ -1027,8 +1038,7 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
                     return NGX_OK;
                 }
 
-                /* Need to trigger renegotiation handshake by reading.
-                 * Peeking 0 bytes actually works.
+                /*
                  * See: http://marc.info/?t=145493359200002&r=1&w=2
                  */
                 SSL_peek(c->ssl->connection, peekbuf, 0);
@@ -1040,7 +1050,11 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
                     return NGX_OK;
                 }
 
-                ngx_log_error(NGX_LOG_ERR, c->log, 0, "renegotiate:success");
+                // if reneg is still pending update connection flag and run this method again
+                if (SSL_renegotiate_pending(c->ssl->connection) == 1) {
+                    c->ssl->wait_renegotiate = 1;
+                    return NGX_AGAIN;
+                }
             }
 
             if (verify) {

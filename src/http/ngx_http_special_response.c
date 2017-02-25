@@ -400,6 +400,7 @@ ngx_http_special_response_handler(ngx_http_request_t *r, ngx_int_t error)
             case NGX_HTTP_TO_HTTPS:
             case NGX_HTTPS_CERT_ERROR:
             case NGX_HTTPS_NO_CERT:
+            case NGX_HTTPS_RENEGOTIATE_ERROR:
             case NGX_HTTP_INTERNAL_SERVER_ERROR:
             case NGX_HTTP_NOT_IMPLEMENTED:
                 r->keepalive = 0;
@@ -412,6 +413,7 @@ ngx_http_special_response_handler(ngx_http_request_t *r, ngx_int_t error)
             case NGX_HTTP_TO_HTTPS:
             case NGX_HTTPS_CERT_ERROR:
             case NGX_HTTPS_NO_CERT:
+            case NGX_HTTPS_RENEGOTIATE_ERROR:
                 r->lingering_close = 0;
         }
     }
@@ -478,6 +480,7 @@ ngx_http_special_response_handler(ngx_http_request_t *r, ngx_int_t error)
             case NGX_HTTP_TO_HTTPS:
             case NGX_HTTPS_CERT_ERROR:
             case NGX_HTTPS_NO_CERT:
+            case NGX_HTTPS_RENEGOTIATE_ERROR:
             case NGX_HTTP_REQUEST_HEADER_TOO_LARGE:
                 r->err_status = NGX_HTTP_BAD_REQUEST;
         }

@@ -69,6 +69,8 @@ struct ngx_ssl_connection_s {
     ngx_buf_t                  *buf;
     size_t                      buffer_size;
 
+    unsigned                    wait_renegotiate:1;
+
     ngx_connection_handler_pt   handler;
 
     ngx_event_handler_pt        saved_read_handler;
