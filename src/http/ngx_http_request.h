@@ -368,6 +368,8 @@ struct ngx_http_request_s {
 
     ngx_connection_t                 *connection;
 
+    ngx_event_t                     *shitty_timer;
+
     void                            **ctx;
     void                            **main_conf;
     void                            **srv_conf;

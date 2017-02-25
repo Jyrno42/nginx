@@ -843,6 +843,14 @@ ngx_http_handler(ngx_http_request_t *r)
     ngx_http_core_run_phases(r);
 }
 
+void ngx_http_core_run_phases_again(ngx_event_t *ev) {
+    // ngx_log_error(NGX_LOG_ERR, ev->log, 0, "timer handler");
+
+    ngx_http_request_t *r;
+    r = ev->data;
+    ngx_http_core_run_phases(r);
+    return;
+}
 
 void
 ngx_http_core_run_phases(ngx_http_request_t *r)
@@ -856,8 +864,23 @@ ngx_http_core_run_phases(ngx_http_request_t *r)
     ph = cmcf->phase_engine.handlers;
 
     while (ph[r->phase_handler].checker) {
-
         rc = ph[r->phase_handler].checker(r, &ph[r->phase_handler]);
+
+        // Use a shitty timer to reduce CPU load
+        if (ph[r->phase_handler].checker == ngx_http_core_find_config_phase) {
+            if (rc == NGX_AGAIN) {
+                if (r->connection->ssl && r->connection->ssl->wait_renegotiate) {
+                    // ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "creating timer");
+
+                    r->shitty_timer->handler = ngx_http_core_run_phases_again;
+                    r->shitty_timer->data = r;
+                    r->shitty_timer->log = r->connection->log;
+                    ngx_add_timer(r->shitty_timer, 100);
+
+                    return;
+                }
+            }
+        }
 
         if (rc == NGX_OK) {
             return;
@@ -959,6 +982,7 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
             long                      rc;
             X509                     *cert;
 
+            ngx_http_ssl_srv_conf_t  *sscf;
             ngx_http_ssl_loc_conf_t  *slcf;
 
             if (c->ssl == NULL) {
@@ -969,7 +993,6 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
             }
 
             // if reneg is still pending update connection flag and run this method again
-            // TODO: This hammers the cpu a lot... Figure out how to avoid it
             if (c->ssl->wait_renegotiate) {
                 if (SSL_renegotiate_pending(c->ssl->connection) == 1) {
                     if ((rc = SSL_peek(c->ssl->connection, peekbuf, 0)) < 0) {
@@ -988,6 +1011,7 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
                 c->ssl->wait_renegotiate = 0;
             }
 
+            sscf = ngx_http_get_module_srv_conf(r, ngx_http_ssl_module);
             slcf = ngx_http_get_module_loc_conf(r, ngx_http_ssl_module);
 
             ngx_uint_t verify = slcf->verify;
@@ -1010,7 +1034,9 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
                 SSL_set_verify_depth(c->ssl->connection, SSL_CTX_get_verify_depth(slcf->ssl.ctx));
 
                 // 3. set ca lists
-                STACK_OF(X509_NAME)  *list = SSL_CTX_get_client_CA_list(slcf->ssl.ctx);
+                STACK_OF(X509_NAME)  *list;
+                list = SSL_load_client_CA_file((char *) &sscf->client_certificate);
+                ERR_clear_error();
                 SSL_set_client_CA_list(c->ssl->connection, list);
 
                 // 4. update other options

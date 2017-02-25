@@ -1514,27 +1514,28 @@ ngx_ssl_handle_recv(ngx_connection_t *c, int n)
     int        sslerr;
     ngx_err_t  err;
 
-    if (c->ssl->renegotiation) {
-        /*
-         * disable renegotiation (CVE-2009-3555):
-         * OpenSSL (at least up to 0.9.8l) does not handle disabled
-         * renegotiation gracefully, so drop connection here
-         */
-
-        ngx_log_error(NGX_LOG_NOTICE, c->log, 0, "SSL renegotiation disabled");
-
-        while (ERR_peek_error()) {
-            ngx_ssl_error(NGX_LOG_DEBUG, c->log, 0,
-                          "ignoring stale global SSL error");
-        }
-
-        ERR_clear_error();
-
-        c->ssl->no_wait_shutdown = 1;
-        c->ssl->no_send_shutdown = 1;
-
-        return NGX_ERROR;
-    }
+    // TODO: Figure out if we need to add this back
+    // if (c->ssl->renegotiation) {
+    //     /*
+    //      * disable renegotiation (CVE-2009-3555):
+    //      * OpenSSL (at least up to 0.9.8l) does not handle disabled
+    //      * renegotiation gracefully, so drop connection here
+    //      */
+    //
+    //     ngx_log_error(NGX_LOG_NOTICE, c->log, 0, "SSL renegotiation disabled");
+    //
+    //     while (ERR_peek_error()) {
+    //         ngx_ssl_error(NGX_LOG_DEBUG, c->log, 0,
+    //                       "ignoring stale global SSL error");
+    //     }
+    //
+    //     ERR_clear_error();
+    //
+    //     c->ssl->no_wait_shutdown = 1;
+    //     c->ssl->no_send_shutdown = 1;
+    //
+    //     return NGX_ERROR;
+    // }
 
     if (n > 0) {
 

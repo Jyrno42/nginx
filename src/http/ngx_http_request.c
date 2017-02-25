@@ -537,6 +537,8 @@ ngx_http_create_request(ngx_connection_t *c)
 
     r->pool = pool;
 
+    r->shitty_timer = ngx_calloc(sizeof(ngx_event_t), c->log);
+
     r->http_connection = hc;
     r->signature = NGX_HTTP_MODULE;
     r->connection = c;
@@ -3383,6 +3385,11 @@ ngx_http_free_request(ngx_http_request_t *r, ngx_int_t rc)
     if (r->pool == NULL) {
         ngx_log_error(NGX_LOG_ALERT, log, 0, "http request already closed");
         return;
+    }
+
+    ngx_log_error(NGX_LOG_ERR, log, 0, "deleting timer");
+    if (r->shitty_timer->timer_set) {
+        ngx_del_timer(r->shitty_timer);
     }
 
     cln = r->cleanup;
