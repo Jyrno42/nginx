@@ -6,6 +6,12 @@ servers.
 
 The implementation is loosely based on how it's done in Apache.
 
+## Why a fork?
+
+Since the nginx dev team marked the [issue](https://trac.nginx.org/nginx/ticket/317) as wontfix (in 2013) the
+only way forward is to build the functionality in the userland. I also plan to submit the results of this
+experiment as a patch to nginx.
+
 # Roadmap
 
  - [x] Allow `ssl_verify_client` at location level
