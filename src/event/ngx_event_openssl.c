@@ -737,16 +737,20 @@ ngx_ssl_trusted_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *cert,
 
 
 ngx_int_t
-ngx_ssl_crl(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *crl)
+ngx_ssl_crl(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *crl, ngx_str_t *crl_dir, ngx_uint_t crl_check_mode)
 {
     X509_STORE   *store;
     X509_LOOKUP  *lookup;
 
-    if (crl->len == 0) {
+    if (crl->len == 0 && crl_dir->len == 0) {
         return NGX_OK;
     }
 
-    if (ngx_conf_full_name(cf->cycle, crl, 1) != NGX_OK) {
+    if (crl->len != 0 && ngx_conf_full_name(cf->cycle, crl, 1) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    if (crl_dir->len != 0 && ngx_conf_full_name(cf->cycle, crl_dir, 1) != NGX_OK) {
         return NGX_ERROR;
     }
 
@@ -758,24 +762,56 @@ ngx_ssl_crl(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *crl)
         return NGX_ERROR;
     }
 
-    lookup = X509_STORE_add_lookup(store, X509_LOOKUP_file());
+    if (crl->len != 0) {
+        lookup = X509_STORE_add_lookup(store, X509_LOOKUP_file());
 
-    if (lookup == NULL) {
-        ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
-                      "X509_STORE_add_lookup() failed");
-        return NGX_ERROR;
+        if (lookup == NULL) {
+            ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
+                          "X509_STORE_add_lookup() failed");
+            return NGX_ERROR;
+        }
+
+        if (X509_LOOKUP_load_file(lookup, (char *) crl->data, X509_FILETYPE_PEM)
+            == 0)
+        {
+            ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
+                          "X509_LOOKUP_load_file(\"%s\") failed", crl->data);
+            return NGX_ERROR;
+        }
     }
 
-    if (X509_LOOKUP_load_file(lookup, (char *) crl->data, X509_FILETYPE_PEM)
-        == 0)
-    {
-        ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
-                      "X509_LOOKUP_load_file(\"%s\") failed", crl->data);
-        return NGX_ERROR;
+    if (crl_dir->len != 0) {
+        lookup = X509_STORE_add_lookup(store, X509_LOOKUP_hash_dir());
+
+        if (lookup == NULL) {
+            ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
+                          "X509_STORE_add_lookup() failed");
+            return NGX_ERROR;
+        }
+
+        if (X509_LOOKUP_add_dir(lookup, (char *) crl_dir->data, X509_FILETYPE_PEM)
+            == 0)
+        {
+            ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
+                          "X509_LOOKUP_add_dir(\"%s\") failed", crl_dir->data);
+            return NGX_ERROR;
+        }
     }
 
-    X509_STORE_set_flags(store,
-                         X509_V_FLAG_CRL_CHECK|X509_V_FLAG_CRL_CHECK_ALL);
+    unsigned long crl_flags = 0;
+
+    switch (crl_check_mode) {
+        case NGX_SSL_CRL_CHECK_LEAF:
+            crl_flags = X509_V_FLAG_CRL_CHECK;
+            break;
+        case NGX_SSL_CRL_CHECK_CHAIN:
+            crl_flags = X509_V_FLAG_CRL_CHECK|X509_V_FLAG_CRL_CHECK_ALL;
+            break;
+        default:
+            crl_flags = 0;
+    }
+
+    X509_STORE_set_flags(store, crl_flags|X509_V_FLAG_USE_DELTAS);
 
     return NGX_OK;
 }

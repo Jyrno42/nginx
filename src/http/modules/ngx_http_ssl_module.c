@@ -71,6 +71,13 @@ static ngx_conf_enum_t  ngx_http_ssl_verify[] = {
     { ngx_null_string, 0 }
 };
 
+static ngx_conf_enum_t ngx_http_ssl_crl_check_mode[] = {
+    { ngx_string("none"), NGX_SSL_CRL_CHECK_NONE },
+    { ngx_string("chain"), NGX_SSL_CRL_CHECK_CHAIN },
+    { ngx_string("leaf"), NGX_SSL_CRL_CHECK_LEAF },
+    { ngx_null_string, 0 }
+};
+
 
 static ngx_command_t  ngx_http_ssl_commands[] = {
 
@@ -206,6 +213,20 @@ static ngx_command_t  ngx_http_ssl_commands[] = {
       NGX_HTTP_SRV_CONF_OFFSET,
       offsetof(ngx_http_ssl_srv_conf_t, crl),
       NULL },
+
+    { ngx_string("ssl_crl_dir"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_http_ssl_srv_conf_t, crl_dir),
+      NULL },
+
+    { ngx_string("ssl_crl_check_mode"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_http_ssl_srv_conf_t, crl_check_mode),
+      &ngx_http_ssl_crl_check_mode },
 
     { ngx_string("ssl_stapling"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
@@ -536,6 +557,7 @@ ngx_http_ssl_create_srv_conf(ngx_conf_t *cf)
      *     sscf->client_certificate = { 0, NULL };
      *     sscf->trusted_certificate = { 0, NULL };
      *     sscf->crl = { 0, NULL };
+     *     sscf->crl_dir = { 0, NULL };
      *     sscf->ciphers = { 0, NULL };
      *     sscf->shm_zone = NULL;
      *     sscf->stapling_file = { 0, NULL };
@@ -555,6 +577,7 @@ ngx_http_ssl_create_srv_conf(ngx_conf_t *cf)
     sscf->session_ticket_keys = NGX_CONF_UNSET_PTR;
     sscf->stapling = NGX_CONF_UNSET;
     sscf->stapling_verify = NGX_CONF_UNSET;
+    sscf->crl_check_mode = NGX_CONF_UNSET;
 
     return sscf;
 }
@@ -605,6 +628,8 @@ ngx_http_ssl_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_str_value(conf->trusted_certificate,
                          prev->trusted_certificate, "");
     ngx_conf_merge_str_value(conf->crl, prev->crl, "");
+    ngx_conf_merge_str_value(conf->crl_dir, prev->crl_dir, "");
+    ngx_conf_merge_uint_value(conf->crl_check_mode, prev->crl_check_mode, NGX_SSL_CRL_CHECK_CHAIN);
 
     ngx_conf_merge_str_value(conf->ecdh_curve, prev->ecdh_curve,
                          NGX_DEFAULT_ECDH_CURVE);
@@ -647,7 +672,6 @@ ngx_http_ssl_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
         }
 
     } else {
-
         if (conf->certificates == NULL) {
             return NGX_CONF_OK;
         }
@@ -894,6 +918,11 @@ static char *ngx_http_ssl_merge_loc_conf(ngx_conf_t *cf, void *parent, void *chi
 
     ngx_http_ssl_srv_conf_t *cscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_ssl_module);
 
+    // if not enabled, early exit
+    if (!cscf->enable || cscf->certificates == NULL) {
+        return NGX_CONF_OK;
+    }
+
     conf->ssl.log = cf->log;
 
     if (ngx_ssl_create(&conf->ssl, cscf->protocols, cscf) != NGX_OK) {
@@ -971,7 +1000,7 @@ static char *ngx_http_ssl_merge_loc_conf(ngx_conf_t *cf, void *parent, void *chi
          return NGX_CONF_ERROR;
      }
 
-     if (ngx_ssl_crl(cf, &conf->ssl, &cscf->crl) != NGX_OK) {
+     if (ngx_ssl_crl(cf, &conf->ssl, &cscf->crl, &cscf->crl_dir, cscf->crl_check_mode) != NGX_OK) {
          return NGX_CONF_ERROR;
      }
 

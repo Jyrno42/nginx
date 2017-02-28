@@ -127,6 +127,10 @@ typedef struct {
 
 #endif
 
+#define NGX_SSL_CRL_CHECK_NONE   0
+#define NGX_SSL_CRL_CHECK_LEAF   1
+#define NGX_SSL_CRL_CHECK_CHAIN  2
+
 
 #define NGX_SSL_SSLv2    0x0002
 #define NGX_SSL_SSLv3    0x0004
@@ -153,7 +157,7 @@ ngx_int_t ngx_ssl_client_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl,
     ngx_str_t *cert, ngx_int_t depth);
 ngx_int_t ngx_ssl_trusted_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl,
     ngx_str_t *cert, ngx_int_t depth);
-ngx_int_t ngx_ssl_crl(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *crl);
+ngx_int_t ngx_ssl_crl(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *crl, ngx_str_t *crl_dir, ngx_uint_t crl_check_mode);
 ngx_int_t ngx_ssl_stapling(ngx_conf_t *cf, ngx_ssl_t *ssl,
     ngx_str_t *file, ngx_str_t *responder, ngx_uint_t verify);
 ngx_int_t ngx_ssl_stapling_resolver(ngx_conf_t *cf, ngx_ssl_t *ssl,

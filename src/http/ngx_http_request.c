@@ -337,7 +337,7 @@ ngx_http_init_connection(ngx_connection_t *c)
         if (hc->addr_conf->ssl && slcf->ssl.ctx == NULL) {
             ngx_log_error(NGX_LOG_ERR, c->log, 0,
                           "no \"ssl_certificate\" is defined "
-                          "in server listening on SSL port");
+                          "in server listening on SSL port (Hint: Did you forget to add `ssl on;`?)");
             ngx_http_close_connection(c);
             return;
         }

@@ -43,7 +43,11 @@ typedef struct {
     ngx_flag_t                       ssl_verify;
     ngx_uint_t                       ssl_verify_depth;
     ngx_str_t                        ssl_trusted_certificate;
+
     ngx_str_t                        ssl_crl;
+    ngx_str_t                        ssl_crl_dir;
+    ngx_uint_t                       ssl_crl_check_mode;
+
     ngx_str_t                        ssl_certificate;
     ngx_str_t                        ssl_certificate_key;
     ngx_array_t                     *ssl_passwords;
@@ -104,6 +108,13 @@ static ngx_conf_bitmask_t  ngx_stream_proxy_ssl_protocols[] = {
     { ngx_string("TLSv1.1"), NGX_SSL_TLSv1_1 },
     { ngx_string("TLSv1.2"), NGX_SSL_TLSv1_2 },
     { ngx_null_string, 0 }
+};
+
+static ngx_conf_enum_t ngx_stream_proxy_ssl_crl_check_mode[] = {
+        { ngx_string("none"), NGX_SSL_CRL_CHECK_NONE },
+        { ngx_string("chain"), NGX_SSL_CRL_CHECK_CHAIN },
+        { ngx_string("leaf"), NGX_SSL_CRL_CHECK_LEAF },
+        { ngx_null_string, 0 }
 };
 
 #endif
@@ -289,6 +300,20 @@ static ngx_command_t  ngx_stream_proxy_commands[] = {
       NGX_STREAM_SRV_CONF_OFFSET,
       offsetof(ngx_stream_proxy_srv_conf_t, ssl_crl),
       NULL },
+
+    { ngx_string("proxy_ssl_crl_dir"),
+      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      offsetof(ngx_stream_proxy_srv_conf_t, ssl_crl_dir),
+      NULL },
+
+    { ngx_string("proxy_ssl_crl_check_mode"),
+      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      offsetof(ngx_stream_proxy_srv_conf_t, ssl_crl_check_mode),
+      &ngx_stream_proxy_ssl_crl_check_mode },
 
     { ngx_string("proxy_ssl_certificate"),
       NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
@@ -1831,6 +1856,7 @@ ngx_stream_proxy_create_srv_conf(ngx_conf_t *cf)
      *     conf->ssl_name = NULL;
      *     conf->ssl_trusted_certificate = { 0, NULL };
      *     conf->ssl_crl = { 0, NULL };
+     *     conf->ssl_crl_dir = { 0, NULL };
      *     conf->ssl_certificate = { 0, NULL };
      *     conf->ssl_certificate_key = { 0, NULL };
      *
@@ -1858,6 +1884,7 @@ ngx_stream_proxy_create_srv_conf(ngx_conf_t *cf)
     conf->ssl_verify = NGX_CONF_UNSET;
     conf->ssl_verify_depth = NGX_CONF_UNSET_UINT;
     conf->ssl_passwords = NGX_CONF_UNSET_PTR;
+    conf->ssl_crl_check_mode = NGX_CONF_UNSET;
 #endif
 
     return conf;
@@ -1928,6 +1955,8 @@ ngx_stream_proxy_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
                               prev->ssl_trusted_certificate, "");
 
     ngx_conf_merge_str_value(conf->ssl_crl, prev->ssl_crl, "");
+    ngx_conf_merge_str_value(conf->ssl_crl_dir, prev->ssl_crl_dir, "");
+    ngx_conf_merge_uint_value(conf->ssl_crl_check_mode, prev->ssl_crl_check_mode, NGX_SSL_CRL_CHECK_CHAIN);
 
     ngx_conf_merge_str_value(conf->ssl_certificate,
                               prev->ssl_certificate, "");
@@ -2009,7 +2038,7 @@ ngx_stream_proxy_set_ssl(ngx_conf_t *cf, ngx_stream_proxy_srv_conf_t *pscf)
             return NGX_ERROR;
         }
 
-        if (ngx_ssl_crl(cf, pscf->ssl, &pscf->ssl_crl) != NGX_OK) {
+        if (ngx_ssl_crl(cf, pscf->ssl, &pscf->ssl_crl, &pscf->ssl_crl_dir, pscf->ssl_crl_check_mode) != NGX_OK) {
             return NGX_ERROR;
         }
     }

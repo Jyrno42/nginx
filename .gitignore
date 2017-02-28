@@ -1,0 +1,6 @@
+cmake-build-debug
+objs/
+.idea/
+Makefile
+CMakeLists.txt
+nginx-location-verify-client.patch

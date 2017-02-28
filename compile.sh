@@ -38,4 +38,3 @@ set -e
     --with-debug \
     --with-openssl=../openssl \
     --with-openssl-opt=-d
-    # --add-dynamic-module=/Data/projects/nginx/ngx_force_renegotiate \

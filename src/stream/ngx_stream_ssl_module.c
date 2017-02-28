@@ -57,6 +57,13 @@ static ngx_conf_enum_t  ngx_stream_ssl_verify[] = {
     { ngx_null_string, 0 }
 };
 
+static ngx_conf_enum_t ngx_stream_ssl_crl_check_mode[] = {
+        { ngx_string("none"), NGX_SSL_CRL_CHECK_NONE },
+        { ngx_string("chain"), NGX_SSL_CRL_CHECK_CHAIN },
+        { ngx_string("leaf"), NGX_SSL_CRL_CHECK_LEAF },
+        { ngx_null_string, 0 }
+};
+
 
 static ngx_command_t  ngx_stream_ssl_commands[] = {
 
@@ -185,6 +192,20 @@ static ngx_command_t  ngx_stream_ssl_commands[] = {
       NGX_STREAM_SRV_CONF_OFFSET,
       offsetof(ngx_stream_ssl_conf_t, crl),
       NULL },
+
+    { ngx_string("ssl_crl_dir"),
+      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      offsetof(ngx_stream_ssl_conf_t, crl_dir),
+      NULL },
+
+    { ngx_string("ssl_crl_check_mode"),
+      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      offsetof(ngx_stream_ssl_conf_t, crl_check_mode),
+      &ngx_stream_ssl_crl_check_mode },
 
       ngx_null_command
 };
@@ -504,6 +525,7 @@ ngx_stream_ssl_create_conf(ngx_conf_t *cf)
      *     scf->client_certificate = { 0, NULL };
      *     scf->trusted_certificate = { 0, NULL };
      *     scf->crl = { 0, NULL };
+     *     scf->crl_dir = { 0, NULL };
      *     scf->ciphers = { 0, NULL };
      *     scf->shm_zone = NULL;
      */
@@ -519,6 +541,7 @@ ngx_stream_ssl_create_conf(ngx_conf_t *cf)
     scf->session_timeout = NGX_CONF_UNSET;
     scf->session_tickets = NGX_CONF_UNSET;
     scf->session_ticket_keys = NGX_CONF_UNSET_PTR;
+    scf->crl_check_mode = NGX_CONF_UNSET;
 
     return scf;
 }
@@ -561,6 +584,8 @@ ngx_stream_ssl_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_str_value(conf->trusted_certificate,
                          prev->trusted_certificate, "");
     ngx_conf_merge_str_value(conf->crl, prev->crl, "");
+    ngx_conf_merge_str_value(conf->crl_dir, prev->crl_dir, "");
+    ngx_conf_merge_uint_value(conf->crl_check_mode, prev->crl_check_mode, NGX_SSL_CRL_CHECK_CHAIN);
 
     ngx_conf_merge_str_value(conf->ecdh_curve, prev->ecdh_curve,
                          NGX_DEFAULT_ECDH_CURVE);
@@ -635,7 +660,7 @@ ngx_stream_ssl_merge_conf(ngx_conf_t *cf, void *parent, void *child)
             return NGX_CONF_ERROR;
         }
 
-        if (ngx_ssl_crl(cf, &conf->ssl, &conf->crl) != NGX_OK) {
+        if (ngx_ssl_crl(cf, &conf->ssl, &conf->crl, &conf->crl_dir, conf->crl_check_mode) != NGX_OK) {
             return NGX_CONF_ERROR;
         }
     }
