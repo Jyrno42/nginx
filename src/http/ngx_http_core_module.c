@@ -844,8 +844,6 @@ ngx_http_handler(ngx_http_request_t *r)
 }
 
 void ngx_http_core_run_phases_again(ngx_event_t *ev) {
-    // ngx_log_error(NGX_LOG_ERR, ev->log, 0, "timer handler");
-
     ngx_http_request_t *r;
     r = ev->data;
     ngx_http_core_run_phases(r);
@@ -866,16 +864,14 @@ ngx_http_core_run_phases(ngx_http_request_t *r)
     while (ph[r->phase_handler].checker) {
         rc = ph[r->phase_handler].checker(r, &ph[r->phase_handler]);
 
-        // Use a shitty timer to reduce CPU load
+        // Use a timer to reduce CPU load
         if (ph[r->phase_handler].checker == ngx_http_core_find_config_phase) {
             if (rc == NGX_AGAIN) {
                 if (r->connection->ssl && r->connection->ssl->wait_renegotiate) {
-                    // ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "creating timer");
-
-                    r->shitty_timer->handler = ngx_http_core_run_phases_again;
-                    r->shitty_timer->data = r;
-                    r->shitty_timer->log = r->connection->log;
-                    ngx_add_timer(r->shitty_timer, 100);
+                    r->renegotiate_timer->handler = ngx_http_core_run_phases_again;
+                    r->renegotiate_timer->data = r;
+                    r->renegotiate_timer->log = r->connection->log;
+                    ngx_add_timer(r->renegotiate_timer, 100);
 
                     return;
                 }
@@ -977,7 +973,6 @@ ngx_http_core_find_config_phase(ngx_http_request_t *r,
         ngx_connection_t  *c;
         c = r->connection;
 
-        // TODO: What does r->main == r prevent/check?
         if (r->main == r && r->http_connection->ssl) {
             long                      rc;
             X509                     *cert;

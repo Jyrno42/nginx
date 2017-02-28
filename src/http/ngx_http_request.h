@@ -368,7 +368,7 @@ struct ngx_http_request_s {
 
     ngx_connection_t                 *connection;
 
-    ngx_event_t                     *shitty_timer;
+    ngx_event_t                     *renegotiate_timer;
 
     void                            **ctx;
     void                            **main_conf;
